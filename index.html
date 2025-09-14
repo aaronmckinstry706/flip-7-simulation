@@ -12,23 +12,17 @@
 
   <script>
     const totalGames = 1000;
-    const wins = {
-      "first player": 200,
-      "second player": 450,
-      "third player": 350
-    };
-
-    const players = Object.keys(wins);
-    const winPercentages = players.map(player => (wins[player] / totalGames * 100).toFixed(1));
+    const players = ["first player", "second player", "third player"];
+    const wins = players.reduce((acc, p) => (acc[p] = 0, acc), {});
 
     const ctx = document.getElementById('winChart');
-    new Chart(ctx, {
+    const chart = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: players,
         datasets: [{
           label: 'Win %',
-          data: winPercentages,
+          data: players.map(() => 0),
           backgroundColor: ['#3498db', '#2ecc71', '#e74c3c']
         }]
       },
@@ -42,6 +36,22 @@
         }
       }
     });
+
+    function updateChart() {
+      chart.data.datasets[0].data = players.map(p => (wins[p] / totalGames * 100).toFixed(1));
+      chart.update();
+    }
+
+    async function simulateWins() {
+      for (let i = 0; i < totalGames; i++) {
+        const winner = players[Math.floor(Math.random() * players.length)];
+        wins[winner]++;
+        updateChart();
+        await new Promise(resolve => setTimeout(resolve, 1));
+      }
+    }
+
+    simulateWins();
   </script>
 </body>
 </html>
