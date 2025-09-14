@@ -27,6 +27,7 @@
         }]
       },
       options: {
+        animation: { duration: 0 },
         scales: {
           y: {
             beginAtZero: true,
@@ -39,7 +40,7 @@
 
     function updateChart(gamesPlayed) {
       chart.data.datasets[0].data = players.map(p => (wins[p] / gamesPlayed * 100).toFixed(1));
-      chart.update();
+      chart.update('none');
     }
 
       async function simulateWins() {
