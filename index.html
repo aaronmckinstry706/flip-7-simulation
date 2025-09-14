@@ -37,19 +37,19 @@
       }
     });
 
-    function updateChart() {
-      chart.data.datasets[0].data = players.map(p => (wins[p] / totalGames * 100).toFixed(1));
+    function updateChart(gamesPlayed) {
+      chart.data.datasets[0].data = players.map(p => (wins[p] / gamesPlayed * 100).toFixed(1));
       chart.update();
     }
 
-    async function simulateWins() {
-      for (let i = 0; i < totalGames; i++) {
-        const winner = players[Math.floor(Math.random() * players.length)];
-        wins[winner]++;
-        updateChart();
-        await new Promise(resolve => setTimeout(resolve, 1));
+      async function simulateWins() {
+        for (let i = 0; i < totalGames; i++) {
+          const winner = players[Math.floor(Math.random() * players.length)];
+          wins[winner]++;
+          updateChart(i + 1);
+          await new Promise(resolve => setTimeout(resolve, 1));
+        }
       }
-    }
 
     simulateWins();
   </script>
