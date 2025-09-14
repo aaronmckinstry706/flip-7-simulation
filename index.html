@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Win Percentage Chart</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>Win Percentage</h1>
+  <canvas id="winChart" width="400" height="200"></canvas>
+
+  <script>
+    const totalGames = 1000;
+    const wins = {
+      "first player": 200,
+      "second player": 450,
+      "third player": 350
+    };
+
+    const players = Object.keys(wins);
+    const winPercentages = players.map(player => (wins[player] / totalGames * 100).toFixed(1));
+
+    const ctx = document.getElementById('winChart');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: players,
+        datasets: [{
+          label: 'Win %',
+          data: winPercentages,
+          backgroundColor: ['#3498db', '#2ecc71', '#e74c3c']
+        }]
+      },
+      options: {
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 100,
+            title: { display: true, text: 'Percentage' }
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
