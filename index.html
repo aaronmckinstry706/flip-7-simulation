@@ -11,15 +11,264 @@
   <canvas id="winChart" width="400" height="200"></canvas>
 
   <script>
+    class RandomPlayer {
+      name;
+      
+      constructor(name) {
+        this.name = name;
+      }
+      
+      hit(gameState) {
+        return Math.random() < 0.5;
+      }
+      
+      freeze(gameState) {
+        const otherPlayers = gameState.playersInGame().filter(p => p !== this);
+        if (otherPlayers.length == 0)
+          return this;
+        else
+          return otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+      }
+      
+      giveSecondChance(gameState) {
+        const otherPlayers = gameState.playersInGame().filter(p => p !== this && !gameState.playerStates.get(p).cards.some(c => c === 'SecondChance'));
+        if (otherPlayers.length > 0) {
+          return otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+        } else {
+          return null;
+        }
+      }
+      
+      flip3(gameState) {
+        const players = gameState.playersInGame();
+        return players[Math.floor(Math.random() * players.length)];
+      }
+    }
+    
+    class PlayerState {
+      busted;
+      stayed;
+      frozen;
+      cards;
+      
+      constructor() {
+        this.reset();
+      }
+      
+      reset() {
+        this.busted = false;
+        this.stayed = false;
+        this.frozen = false;
+        this.cards = [];
+      }
+      
+      score() {
+        if (this.busted) {
+          return 0;
+        } else {
+          // Add number cards.
+          const x2 = this.cards.some(c => c === 'x2');
+          const bonuses = this.cards.filter(c => c[0] === '+').map(c => parseInt(c.substring(1))).reduce((accumulator, current) => accumulator + current, 0);
+          const numbers = this.cards.filter(c => ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].some(numberCard => numberCard === c)).map(c => parseInt(c)).reduce((accumulator, current) => accumulator + current, 0);
+          let score = numbers;
+          if (x2) {
+            score *= 2;
+          }
+          score += bonuses;
+          
+          return score;
+        }
+      }
+      
+      flippedSeven() {
+        return this.cards.filter(playerCard => ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].some(numberCard => numberCard === playerCard)).length === 7;
+      }
+    }
+    
+    class GameState {
+      deck;
+      playerStates;
+      discarded;
+      playerScores;
+
+      constructor(players) {
+        this.deck = GameState.createDeck();
+        this.shuffleDeck();
+        this.discarded = [];
+        this.playerStates = new Map();
+        players.forEach(player => this.playerStates.set(player, new PlayerState()));
+        this.playerScores = new Map();
+        players.forEach(player => this.playerScores.set(player, 0));
+      }
+      
+      playersInGame() {
+        return Array.from(this.playerStates.entries().filter(([player, state]) => {
+          return !state.busted && !state.stayed && !state.frozen;
+        }).map(([player, state]) => player));
+      }
+      
+      winner() {
+        const scorersAbove200 = [...this.playerScores.entries().filter(([player, score]) => score >= 200)];
+        if (scorersAbove200.length === 0) {
+          return null;
+        } else {
+          const max = Math.max(...scorersAbove200.map(([player, score]) => score));
+          const topScorers = scorersAbove200.filter(([player, score]) => score === max).map(([player, score]) => player);
+          if (topScorers.length === 1) {
+            return topScorers[0];
+          } else {
+            return null;
+          }
+        }
+      }
+      
+      static createDeck() {
+        const deck = [];
+        
+        deck.push('0')
+        for (let number = 1; number <= 12; ++number) {
+          for (let quantity = 0; quantity < number; ++quantity) {
+            deck.push(String(number));
+          }
+        }
+        [2, 4, 6, 8, 10].forEach(bonus => deck.push('+' + String(bonus)));
+        deck.push('Freeze');
+        deck.push('Freeze');
+        deck.push('Freeze');
+        deck.push('Flip3');
+        deck.push('Flip3');
+        deck.push('Flip3');
+        deck.push('SecondChance');
+        deck.push('SecondChance');
+        deck.push('SecondChance');
+
+        return deck;
+      }
+      
+      shuffleDeck() {
+        for (let i = this.deck.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [this.deck[i], this.deck[j]] = [this.deck[j], this.deck[i]];
+        }
+      }
+    }
+    
+    function createPlayers() {
+      return [new RandomPlayer("Random 1"), new RandomPlayer("Random 2"), new RandomPlayer("Random 3")];
+    }
+    
+    function playGame() {
+      const gameState = new GameState(createPlayers());
+      
+      function giveCards(player, count) {
+        const playerState = gameState.playerStates.get(player);
+
+        const drawnCards = [];
+
+        let resolveCardsAfter = true;
+        const cardsToResolveAfter = [];
+        for (let i = 0; i < count; ++i) {
+          if (gameState.deck.length === 0) {
+            gameState.deck = gameState.discarded;
+            gameState.discarded = [];
+            gameState.shuffleDeck();
+          }
+          
+          const flippedCard = gameState.deck.pop();
+          drawnCards.push(flippedCard);
+
+          if (flippedCard === 'Freeze') {
+            cardsToResolveAfter.push(flippedCard);
+            playerState.cards.push(flippedCard);
+          } else if (flippedCard === 'Flip3') {
+            cardsToResolveAfter.push(flippedCard);
+            playerState.cards.push(flippedCard);
+          } else if (flippedCard === 'SecondChance' && playerState.cards.some(playerCard => playerCard === 'SecondChance')) {
+            const target = player.giveSecondChance(gameState);
+            if (target !== null) {
+              gameState.playerStates.get(target).cards.push('SecondChance');
+            } else {
+              gameState.discarded.push('SecondChance');
+            }
+          } else if (['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].some(numberCard => numberCard === flippedCard)) {
+            const duplicateExists = playerState.cards.some(playerCard => playerCard === flippedCard);
+            if (duplicateExists) {
+              if (playerState.cards.some(playerCard => playerCard === 'SecondChance')) {
+                playerState.cards = playerState.cards.filter(playerCard => playerCard !== 'SecondChance');
+                gameState.discarded.push('SecondChance');
+                gameState.discarded.push(flippedCard);
+              } else {
+                playerState.busted = true;
+                playerState.cards.push(flippedCard);
+                resolveCardsAfter = false;
+                break;
+              }
+            } else {
+              playerState.cards.push(flippedCard);
+              if (playerState.flippedSeven()) {
+                break;
+              }
+            }
+          } else {
+            // Bonus or second chance.
+            playerState.cards.push(flippedCard);
+          }
+        }
+        
+        if (resolveCardsAfter) {
+          for (let i = 0; i < cardsToResolveAfter.length; ++i) {
+            const flippedCard = cardsToResolveAfter[i];
+            if (flippedCard === 'Freeze') {
+              const target = player.freeze(gameState);
+              gameState.playerStates.get(target).frozen = true;
+              if (target.name === player.name) {
+                break;
+              }
+            } else if (flippedCard === 'Flip3') {
+              const target = player.flip3(gameState);
+              giveCards(target, 3);
+              if (gameState.playerStates.values().some(s => s.flippedSeven()) || playerState.frozen || playerState.busted) {
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      while (gameState.winner() === null) {
+        gameState.playerStates.values().forEach(playerState => playerState.cards.forEach(c => gameState.discarded.push(c)));
+        gameState.playerStates.values().forEach(playerState => playerState.reset());
+        let currentPlayerIndex = 0;
+        while (gameState.playersInGame().length > 0) {
+          let [currentPlayer, currentPlayerState] = Array.from(gameState.playerStates.entries())[currentPlayerIndex];
+          
+          if (!currentPlayerState.frozen && !currentPlayerState.busted && !currentPlayerState.stayed) {
+            if (currentPlayer.hit(gameState)) {
+              giveCards(currentPlayer, 1);
+            } else {
+              gameState.playerStates.get(currentPlayer).stayed = true;
+            }
+          }
+          
+          currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+        }
+        gameState.playerStates.entries().forEach(([player, playerState]) => {
+          gameState.playerScores.set(player, gameState.playerScores.get(player) + playerState.score());
+        });
+      }
+      return gameState.winner();
+    }
+    
+    let gamesPlayedSoFar = 0;
     const totalGames = 1000;
-    const players = ["first player", "second player", "third player"];
-    const wins = players.reduce((acc, p) => (acc[p] = 0, acc), {});
+    const players = createPlayers();
+    const wins = players.map(() => 0);
 
     const ctx = document.getElementById('winChart');
     const chart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: players,
+        labels: players.map(p => p.name),
         datasets: [{
           label: 'Win %',
           data: players.map(() => 0),
@@ -42,18 +291,20 @@
     });
 
     function updateChart(gamesPlayed) {
-      chart.data.datasets[0].data = players.map(p => (wins[p] / gamesPlayed * 100).toFixed(1));
+      chart.data.datasets[0].data = wins.map(winCount => (winCount / gamesPlayed * 100).toFixed(1));
       chart.update('none');
     }
 
-      async function simulateWins() {
-        for (let i = 0; i < totalGames; i++) {
-          const winner = players[Math.floor(Math.random() * players.length)];
-          wins[winner]++;
-          updateChart(i + 1);
-          await new Promise(resolve => setTimeout(resolve, 1));
-        }
+    function simulateWins() {
+      for (let i = 0; i < totalGames; i++) {
+        setTimeout(() => {
+          const winner = playGame()
+          wins[players.findIndex(p => p.name === winner.name)]++;
+          gamesPlayedSoFar++;
+          updateChart(gamesPlayedSoFar);
+        });
       }
+    }
 
     simulateWins();
   </script>
