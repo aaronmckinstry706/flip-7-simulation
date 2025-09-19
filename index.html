@@ -113,6 +113,70 @@
       }
     }
     
+    class HumanApproximatedExpectedValuePlayer {
+      name;
+      
+      constructor(name) {
+        this.name = name;
+      }
+      
+      hit(gameState) {
+        const numberCardsCouldBust = ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+        
+        const bustCards = gameState.playerStates.get(this).cards.filter(c => numberCardsCouldBust.some(n => n === c)).map(c => parseInt(c));
+        
+        const sumOfBustCards = bustCards.reduce((partialSum, term) => partialSum + term, 0);
+        const bustApproximation = Math.floor(sumOfBustCards * sumOfBustCards / 10);
+        
+        const sumsNotContributingTo55 = bustCards.map(c => parseInt(c)).map(n => {
+          if (n === 12) {
+            return 14;
+          } else if (n === 11) {
+            return 12;
+          } else if (n === 10) {
+            return 10;
+          } else if (n === 9) {
+            return 8;
+          } else if (n === 7) {
+            return 4;
+          } else if (n === 6) {
+            return 3;
+          } else if (n === 5) {
+            return 2;
+          } else if (n === 4) {
+            return 1;
+          } else if (n === 3) {
+            return 1;
+          } else {
+            return 0;
+          }
+        }).reduce((partialSum, term) => partialSum + term, 0);
+        return 55 - sumsNotContributingTo55 > bustApproximation;
+      }
+      
+      freeze(gameState) {
+        const otherPlayers = gameState.playersInGame().filter(p => p !== this);
+        if (otherPlayers.length == 0)
+          return this;
+        else
+          return otherPlayers.reduce((max, current) => (max === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) > gameState.playerStates.get(max).score() + gameState.playerScores.get(max) ? current : max), null);
+      }
+      
+      giveSecondChance(gameState) {
+        const otherPlayers = gameState.playersInGame().filter(p => p !== this && !gameState.playerStates.get(p).cards.some(c => c === 'SecondChance'));
+        if (otherPlayers.length > 0) {
+          return otherPlayers.reduce((min, current) => (min === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) < gameState.playerStates.get(min).score() + gameState.playerScores.get(min) ? current : min), null);
+        } else {
+          return null;
+        }
+      }
+      
+      flip3(gameState) {
+        const players = gameState.playersInGame();
+        return players[Math.floor(Math.random() * players.length)];
+      }
+    }
+    
     class HitUpToN {
       name;
       hitCutoff;
@@ -275,7 +339,8 @@
       return [
         new RandomPlayer("Random 1"),
         new HitUpToN("Hit to 21", 21),
-        new ExpectedValuePlayer("Expected Value")
+        new ExpectedValuePlayer("Expected Value"),
+        new HumanApproximatedExpectedValuePlayer("Human Approximation")
       ];
     }
     
@@ -357,10 +422,11 @@
         }
       }
       
+      let startPlayerIndex = Math.floor(Math.random() * players.length);
       while (gameState.winner() === null) {
         gameState.playerStates.values().forEach(playerState => playerState.cards.forEach(c => gameState.discarded.push(c)));
         gameState.playerStates.values().forEach(playerState => playerState.reset());
-        let currentPlayerIndex = 0;
+        let currentPlayerIndex = startPlayerIndex;
         while (gameState.playersInGame().length > 0) {
           let [currentPlayer, currentPlayerState] = Array.from(gameState.playerStates.entries())[currentPlayerIndex];
           
@@ -377,12 +443,13 @@
         gameState.playerStates.entries().forEach(([player, playerState]) => {
           gameState.playerScores.set(player, gameState.playerScores.get(player) + playerState.score());
         });
+        startPlayerIndex = (startPlayerIndex + 1) % players.length;
       }
       return gameState.winner();
     }
     
     let gamesPlayedSoFar = 0;
-    const totalGames = 1000;
+    const totalGames = 5000;
     const players = createPlayers();
     const wins = players.map(() => 0);
 
