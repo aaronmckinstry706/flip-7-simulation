@@ -19,7 +19,10 @@
       }
       
       hit(gameState) {
-        return Math.random() < 0.5;
+        if (gameState.playerStates.get(this).cards.some(c => c === 'SecondChance'))
+          return true;
+        else
+          return Math.random() < 0.75;
       }
       
       freeze(gameState) {
@@ -27,13 +30,13 @@
         if (otherPlayers.length == 0)
           return this;
         else
-          return otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+          return otherPlayers.reduce((max, current) => (max === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) > gameState.playerStates.get(max).score() + gameState.playerScores.get(max) ? current : max), null);
       }
       
       giveSecondChance(gameState) {
         const otherPlayers = gameState.playersInGame().filter(p => p !== this && !gameState.playerStates.get(p).cards.some(c => c === 'SecondChance'));
         if (otherPlayers.length > 0) {
-          return otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
+          return otherPlayers.reduce((min, current) => (min === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) < gameState.playerStates.get(min).score() + gameState.playerScores.get(min) ? current : min), null);
         } else {
           return null;
         }
@@ -42,6 +45,120 @@
       flip3(gameState) {
         const players = gameState.playersInGame();
         return players[Math.floor(Math.random() * players.length)];
+      }
+    }
+
+    class ExpectedValuePlayer {
+      name;
+      
+      constructor(name) {
+        this.name = name;
+      }
+      
+      hit(gameState) {
+        // Want a lower bound. Use expected value; for freezes and second chances, technically nothing is gained or lost immediately, freeze can only give you 0, and second chances give you 0 or positive later.
+        // However, for flip3, it's more complicated. A lower bound would be to calculate P(flip3) * (-currentScore). This assumes busting, which would be a lower bound on expectation (could get higher).
+        // So, in summary...
+        // P(flip3) * (onlyPlayerInRound ? -currentScore : 0)
+        // + P(bust number) * (haveSecondChance ? 0 : -currentScore)
+        // + P(bonuses or non-bust numbers)
+        
+        // Of course, the deck has the exact ordering--but using that is cheating.
+        const currentRoundScore = gameState.playerStates.get(this).score();
+        const cardCounts = new Map();
+        gameState.deck.forEach(c => cardCounts.set(c, (cardCounts.get(c) || 0) + 1));
+        const cardsLeft = gameState.deck.length;
+        const numberCardsCausingBust = gameState.playerStates.get(this).cards.filter(c => ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].some(n => n === c));
+        const haveSecondChance = gameState.playerStates.get(this).cards.some(c => c === 'SecondChance');
+        
+        const flip3Contribution = -1 * currentRoundScore * (cardCounts.get('Flip3') || 0);
+        const bustContribution = numberCardsCausingBust.map(card => cardCounts.get(card) || 0).reduce((partialSum, current) => partialSum + current, 0) * (haveSecondChance ? 0 : -1 * currentRoundScore);
+        const nonBustContribution = [...cardCounts.keys()].filter(c => !numberCardsCausingBust.some(b => b === c)).map(c => {
+          if (c === 'x2') {
+            return currentRoundScore;
+          } else if (c[0] === '+') {
+            return parseInt(c.substring(1));
+          } else if (['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].some(numberedCard => numberedCard === c)) {
+            return parseInt(c) * cardCounts.get(c);
+          } else {
+            return 0;
+          }
+        }).reduce((partialSum, current) => partialSum + current, 0);
+        
+        const lowerBoundExpectedValue = (nonBustContribution + bustContribution + flip3Contribution) / cardsLeft;
+        
+        return lowerBoundExpectedValue > 0;
+      }
+      
+      freeze(gameState) {
+        const otherPlayers = gameState.playersInGame().filter(p => p !== this);
+        if (otherPlayers.length == 0)
+          return this;
+        else
+          return otherPlayers.reduce((max, current) => (max === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) > gameState.playerStates.get(max).score() + gameState.playerScores.get(max) ? current : max), null);
+      }
+      
+      giveSecondChance(gameState) {
+        const otherPlayers = gameState.playersInGame().filter(p => p !== this && !gameState.playerStates.get(p).cards.some(c => c === 'SecondChance'));
+        if (otherPlayers.length > 0) {
+          return otherPlayers.reduce((min, current) => (min === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) < gameState.playerStates.get(min).score() + gameState.playerScores.get(min) ? current : min), null);
+        } else {
+          return null;
+        }
+      }
+      
+      flip3(gameState) {
+        const players = gameState.playersInGame();
+        return players[Math.floor(Math.random() * players.length)];
+      }
+    }
+    
+    class HitUpToN {
+      name;
+      hitCutoff;
+
+      constructor(name, hitCutoff) {
+        this.name = name;
+        this.hitCutoff = hitCutoff;
+      }
+      
+      hit(gameState) {
+        if (gameState.playerStates.get(this).cards.some(c => c === 'SecondChance'))
+          return true;
+        else if (gameState.playerStates.get(this).cards.filter(c => ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].some(n => c === n)).reduce((accumulated, current) => accumulated + current, 0) <= this.hitCutoff)
+          return true;
+        else
+          return false;
+      }
+      
+      freeze(gameState) {
+        const otherPlayers = gameState.playersInGame().filter(p => p !== this);
+        if (otherPlayers.length == 0)
+          return this;
+        else
+          return otherPlayers.reduce((max, current) => (max === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) > gameState.playerStates.get(max).score() + gameState.playerScores.get(max) ? current : max), null);
+      }
+      
+      giveSecondChance(gameState) {
+        const otherPlayers = gameState.playersInGame().filter(p => p !== this && !gameState.playerStates.get(p).cards.some(c => c === 'SecondChance'));
+        if (otherPlayers.length > 0) {
+          return otherPlayers.reduce((min, current) => (min === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) < gameState.playerStates.get(min).score() + gameState.playerScores.get(min) ? current : min), null);
+        } else {
+          return null;
+        }
+      }
+      
+      flip3(gameState) {
+        if (gameState.playerStates.get(this).cards.filter(c => ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']).length <= 1) {
+          return this;
+        } else {
+          const otherPlayers = gameState.playersInGame().filter(p => p !== this);
+          if (otherPlayers.length == 0) {
+            return this;
+          } else {
+            return otherPlayers.reduce((max, current) => (max === null || gameState.playerStates.get(current).score() + gameState.playerScores.get(current) > gameState.playerStates.get(max).score() + gameState.playerScores.get(max) ? current : max), null);
+          }
+        }
       }
     }
     
@@ -131,6 +248,7 @@
             deck.push(String(number));
           }
         }
+        deck.push('x2');
         [2, 4, 6, 8, 10].forEach(bonus => deck.push('+' + String(bonus)));
         deck.push('Freeze');
         deck.push('Freeze');
@@ -154,7 +272,11 @@
     }
     
     function createPlayers() {
-      return [new RandomPlayer("Random 1"), new RandomPlayer("Random 2"), new RandomPlayer("Random 3")];
+      return [
+        new RandomPlayer("Random 1"),
+        new HitUpToN("Hit to 21", 21),
+        new ExpectedValuePlayer("Expected Value")
+      ];
     }
     
     function playGame() {
